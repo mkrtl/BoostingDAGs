@@ -2,3 +2,4 @@
 .vscode
 images
 */__pycache__/*
+boostdags/data

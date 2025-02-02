@@ -1,5 +1,9 @@
+import logging
 import random
+import os
 
+import numpy as np
+import pandas as pd
 import igraph
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -39,7 +43,7 @@ class DAGGenerator:
         # Scale free graphs
         elif graph_type == "BA":
             # As in https://github.com/xunzheng/notears/blob/master/notears/utils.py#L17
-            random.seed(self.seed)
+            random.seed(self.seed.item())
             # graph = nx.scale_free_graph(self.p, seed=seed)
             graph = igraph.Graph.Barabasi(
                 n=self.p, m=int(
@@ -86,3 +90,51 @@ def min_transpositions_to_topo_ordering(G, perm):
         if dist < min_dist:
             min_dist = dist
     return min_dist
+
+
+def evaluate_graphs(estimated_graph, true_graph):
+    estimated_adjacency_matrix = nx.adjacency_matrix(
+        estimated_graph
+    )  # , nodelist=range(p))
+    true_adjacency_matrix = nx.adjacency_matrix(true_graph)  # , nodelist=range(p))
+    shd = hamming_distance(true_adjacency_matrix, estimated_adjacency_matrix)
+    logging.info("Implemented SHD distance: " + str(shd))
+    
+    logging.info("------------------------------------------")
+    n_true_positives = len(
+        [e for e in set(estimated_graph.edges) if e in true_graph.edges]
+    )
+
+    n_false_positives = len(
+        [e for e in set(estimated_graph.edges) if e not in true_graph.edges]
+    )
+
+    n_false_negatives = len(
+        [e for e in true_graph.edges if e not in set(estimated_graph.edges)]
+    )
+
+    return dict(
+        SHD=shd,
+        n_true_positives=n_true_positives,
+        n_false_positives=n_false_positives,
+        n_false_negatives=n_false_negatives,
+        n_edges_true_graph=len(true_graph.edges),
+    )
+
+
+def write_edges_to_csv(graph, path, file_name="edges.csv"):
+    if not os.path.exists(path):
+            os.makedirs(path)
+    path_edges = f"{path}/{file_name}"
+    nx.write_edgelist(
+            graph, path_edges, delimiter=",", data=False
+        )
+    
+def load_data_and_graph(path_data):
+    data = pd.read_csv(f"{path_data}/data.csv", header=None).to_numpy()
+    edges = pd.read_csv(f"{path_data}/edges.csv", header=None)
+    p = data.shape[1]
+    true_graph = nx.DiGraph()
+    true_graph.add_nodes_from(range(p))
+    true_graph.add_edges_from(edges.values)
+    return data, true_graph

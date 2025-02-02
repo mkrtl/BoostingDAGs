@@ -1,65 +1,58 @@
+import os
+
 import numpy as np
 from sklearn.gaussian_process import kernels
 
-from simulation.data import DataGenerator
 from boostdags.causal_discovery import SmallPDAGBooster
 from simulation import graph
+import constants
 
-root_path_results = "<PATH_TO_RESULTS>"
-path_data = "<PATH_TO_DATA>"
+graph_type = "ER"
 
-N = 200
 additive = True
-n_exps = 100
+N = 50
+p = 5
+expected_n_edges = p
+path_data = constants.PATH_DATA_SMALL_P(N, "scaled", p, additive, graph_type)
+# Stopping criterion for the boosting algorithm
+m = "AIC"
 
+def main(
+    path_data,
+    mu=0.3,
+    alpha=0.01,
+    m="AIC",
+    p=5,
+):
 
-def main(mu=0.3,
-         alpha=.1,
-         n_exps=100,
-         m="AIC",
-         expected_n_edges=5,
-         p=5,
-         N=50,
-         save_graphs_and_result=True,
-         additive_structural_equations=True,
-         graph_type="ER"):
-
-    main_seed = 93
-    np.random.seed(main_seed)
-    n_experiments = n_exps
-    run_seeds = np.random.randint(0, 1e7, n_experiments)
-    kernel_func = kernels.RBF(1.)
-    kernel_func_estimator = kernels.RBF(1.)
-    if not expected_n_edges:
-        expected_n_edges = p
-    print(f"We run {n_experiments} experiments with {p} nodes, additive = {additive_structural_equations}, {N} samples, expected number of edges {expected_n_edges} and graph type {graph_type}.")
-    save_path = f"{path_data}/small_p/dens_edges_{expected_n_edges:.2f}/"
+    kernel_func_estimator = kernels.RBF(1.0)
     permutation_distances = []
-    for seed in run_seeds[:n_exps]:
-        print(f"Seed {seed}")
-        data_generator = DataGenerator(
-            p, N,  kernel_func, seed=seed, graph_type=graph_type,
-            expected_number_edges=expected_n_edges,
-            structural_equation="additive" if additive_structural_equations else "non-additive")
-        data_generator.generate_data()
-        dag_boost = SmallPDAGBooster(
-            kernel_func_estimator, p, alpha=alpha, m=m, mu=mu)
-        dag_boost.train(data_generator.data)
-
-        permutation_distances.append(graph.min_transpositions_to_topo_ordering(
-            data_generator.graph, dag_boost.best_permutation))
-        if save_graphs_and_result:
-            path_data = f"{save_path}/graph_{p}_{N}_additive_{additive_structural_equations}_{graph_type}/{seed}"
-            data_generator.store_data_and_graph(path_data)
-    return permutation_distances, run_seeds[:n_exps]
+    for k, path in enumerate(
+        [
+            os.path.join(os.path.abspath(path_data), p)
+            for p in os.listdir(path_data)
+            if os.path.isdir(os.path.join(path_data, p))
+        ],
+    ):
+        data, true_graph = graph.load_data_and_graph(path)
+        dag_boost = SmallPDAGBooster(kernel_func_estimator, p, alpha=alpha, m=m, mu=mu)
+        dag_boost.train(data)
+        permutation_distances.append(
+            graph.min_transpositions_to_topo_ordering(
+                true_graph, dag_boost.best_permutation
+            )
+        )
+        print(f"Experiment {k}: {permutation_distances[-1]}")
+    return permutation_distances
 
 
 if __name__ == "__main__":
 
-    distances, seeds = main(
-        N=N, additive_structural_equations=additive, n_exps=n_exps)
+    distances = main(
+        path_data,
+        p=p,
+        m=m
+    )
     print(distances)
-    print(seeds)
-    print({k: v for (k, v) in zip(seeds, distances)})
     print(np.mean(distances))
     print(np.std(distances))
